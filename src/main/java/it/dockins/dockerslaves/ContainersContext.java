@@ -44,6 +44,8 @@ public class ContainersContext implements BuildBadgeAction {
 
     protected Map<String, Container> sideContainers = new HashMap<String, Container>();
 
+    protected String network;
+
     /**
      * Flag to indicate the SCM checkout build phase is running.
      */
@@ -99,6 +101,14 @@ public class ContainersContext implements BuildBadgeAction {
 
     public Map<String, Container> getSideContainers() {
         return sideContainers;
+    }
+
+    public String getNetwork() {
+        return network;
+    }
+
+    public void setNetwork(String network) {
+        this.network = network;
     }
 
     @Override

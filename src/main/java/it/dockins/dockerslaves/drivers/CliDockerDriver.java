@@ -43,6 +43,7 @@ import it.dockins.dockerslaves.hints.VolumeHint;
 import it.dockins.dockerslaves.spec.Hint;
 import it.dockins.dockerslaves.spi.DockerDriver;
 import it.dockins.dockerslaves.spi.DockerHostConfig;
+import javafx.concurrent.Task;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.tools.tar.TarEntry;
@@ -66,7 +67,8 @@ import static it.dockins.dockerslaves.DockerSlave.SLAVE_ROOT;
  */
 public class CliDockerDriver extends DockerDriver {
 
-    private final static boolean verbose = Boolean.getBoolean(DockerDriver.class.getName()+".verbose");;
+    private final static boolean verbose = Boolean.getBoolean(DockerDriver.class.getName() + ".verbose");
+    ;
 
     private final DockerHostConfig dockerHost;
 
@@ -146,24 +148,77 @@ public class CliDockerDriver extends DockerDriver {
     }
 
     @Override
+    public String createNetwork(TaskListener listener, String name) throws IOException, InterruptedException {
+        ArgumentListBuilder args = new ArgumentListBuilder()
+                .add("network", "create")
+                .add("--attachable")
+                .add(name);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Launcher launcher = new Launcher.LocalLauncher(listener);
+        int status = launchDockerCLI(launcher, args)
+                .stdout(out).stderr(launcher.getListener().getLogger()).join();
+
+        final String network = out.toString(UTF_8).trim();
+
+        if (status != 0) {
+            throw new IOException("Failed to create docker volume");
+        }
+
+        return network;
+    }
+
+    @Override
+    public boolean hasNetwork(TaskListener listener, String name) throws IOException, InterruptedException {
+        if (StringUtils.isEmpty(name)) {
+            return false;
+        }
+
+        ArgumentListBuilder args = new ArgumentListBuilder()
+                .add("network", "inspect", "-f", "'{{.Id}}'", name);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Launcher launcher = new Launcher.LocalLauncher(listener);
+        int status = launchDockerCLI(launcher, args)
+                .stdout(out).stderr(launcher.getListener().getLogger()).join();
+
+        return status == 0;
+    }
+
+    @Override
+    public void removeNetwork(TaskListener listener, String network) throws IOException, InterruptedException {
+        ArgumentListBuilder args = new ArgumentListBuilder()
+                .add("network", "rm", network);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Launcher launcher = new Launcher.LocalLauncher(listener);
+        int status = launchDockerCLI(launcher, args)
+                .stdout(out).stderr(launcher.getListener().getLogger()).join();
+
+        if (status != 0) {
+            throw new IOException("Failed to remove container " + network);
+        }
+    }
+
+    @Override
     public Container launchRemotingContainer(TaskListener listener, String image, String volume, DockerComputer computer) throws IOException, InterruptedException {
 
         // Create a container for remoting
         ArgumentListBuilder args = new ArgumentListBuilder()
-            .add("create", "--interactive")
+                .add("create", "--interactive")
 
-            // We disable container logging to sdout as we rely on this one as transport for jenkins remoting
-            .add("--log-driver=none")
+                // We disable container logging to sdout as we rely on this one as transport for jenkins remoting
+                .add("--log-driver=none")
 
-            .add("--env", "TMPDIR="+ SLAVE_ROOT+".tmp")
-            .add("--user", "10000:10000")
-            .add("--rm")
-            .add("--volume", volume+":"+ SLAVE_ROOT)
-            .add(image)
-            .add("java")
-            // set TMP directory within the /home/jenkins/ volume so it can be shared with other containers
-            .add("-Djava.io.tmpdir="+ SLAVE_ROOT+".tmp")
-            .add("-jar").add(SLAVE_ROOT+"slave.jar");
+                .add("--env", "TMPDIR=" + SLAVE_ROOT + ".tmp")
+                .add("--user", "10000:10000")
+                .add("--rm")
+                .add("--volume", volume + ":" + SLAVE_ROOT)
+                .add(image)
+                .add("java")
+                // set TMP directory within the /home/jenkins/ volume so it can be shared with other containers
+                .add("-Djava.io.tmpdir=" + SLAVE_ROOT + ".tmp")
+                .add("-jar").add(SLAVE_ROOT + "slave.jar");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Launcher launcher = new Launcher.LocalLauncher(listener);
@@ -194,7 +249,7 @@ public class CliDockerDriver extends DockerDriver {
         Container buildContainer = new Container(image);
         ArgumentListBuilder args = new ArgumentListBuilder()
                 .add("create")
-                .add("--env", "TMPDIR="+SLAVE_ROOT+".tmp")
+                .add("--env", "TMPDIR=" + SLAVE_ROOT + ".tmp")
                 .add("--workdir", SLAVE_ROOT)
                 .add("--volumes-from", remotingContainer.getId())
                 .add("--net=container:" + remotingContainer.getId())
@@ -262,7 +317,7 @@ public class CliDockerDriver extends DockerDriver {
 
     protected void injectTrampoline(Launcher launcher, String containerId) throws IOException, InterruptedException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        IOUtils.copy(getClass().getResourceAsStream("/it/dockins/dockerslaves/trampoline"),out);
+        IOUtils.copy(getClass().getResourceAsStream("/it/dockins/dockerslaves/trampoline"), out);
         putFileContent(launcher, containerId, "/", "trampoline", out.toByteArray(), 555);
     }
 
@@ -358,9 +413,10 @@ public class CliDockerDriver extends DockerDriver {
     private static final Logger LOGGER = Logger.getLogger(ProvisionQueueListener.class.getName());
 
     @Override
-    public Container launchSideContainer(TaskListener listener, String image, Container remotingContainer, List<Hint> hints) throws IOException, InterruptedException {
+    public Container launchSideContainer(TaskListener listener, String image, Container remotingContainer, List<Hint> hints, String containerName, String network) throws IOException, InterruptedException {
         ArgumentListBuilder args = new ArgumentListBuilder()
                 .add("create")
+                .add("--name", containerName)
                 .add("--volumes-from", remotingContainer.getId())
                 .add("--net=container:" + remotingContainer.getId())
                 .add("--ipc=container:" + remotingContainer.getId());
@@ -394,7 +450,7 @@ public class CliDockerDriver extends DockerDriver {
                 .add(image);
 
         Launcher launcher = new Launcher.LocalLauncher(listener);
-        int status =  launchDockerCLI(launcher, args)
+        int status = launchDockerCLI(launcher, args)
                 .stdout(launcher.getListener().getLogger()).join();
 
         if (status != 0) {
@@ -416,7 +472,7 @@ public class CliDockerDriver extends DockerDriver {
     }
 
     @Override
-    public void buildDockerfile(TaskListener listener, String dockerfilePath, String tag, boolean pull)  throws IOException, InterruptedException {
+    public void buildDockerfile(TaskListener listener, String dockerfilePath, String tag, boolean pull) throws IOException, InterruptedException {
         String pullOption = "--pull=";
         if (pull) {
             pullOption += "true";
@@ -481,7 +537,7 @@ public class CliDockerDriver extends DockerDriver {
         return out.toString(UTF_8).contains("Swarm: active");
     }
 
-    public void prependArgs(ArgumentListBuilder args){
+    public void prependArgs(ArgumentListBuilder args) {
         final DockerServerEndpoint endpoint = dockerHost.getEndpoint();
         if (endpoint.getUri() != null) {
             args.prepend("-H", endpoint.getUri());

@@ -90,6 +90,10 @@ public class DefaultDockerProvisioner extends DockerProvisioner {
         return remotingContainer;
     }
 
+    public boolean launchNetwork(Launcher.ProcStarter starter, TaskListener listener) {
+        return false;
+    }
+
     @Override
     public Container launchBuildContainers(Launcher.ProcStarter starter, TaskListener listener) throws IOException, InterruptedException {
         if (spec.getSideContainers().size() > 0 && context.getSideContainers().size() == 0) {
@@ -119,7 +123,7 @@ public class DefaultDockerProvisioner extends DockerProvisioner {
             final ContainerDefinition sidecar = definition.getSpec();
             final String image = sidecar.getImage(driver, starter.pwd(), listener);
             listener.getLogger().println("Starting " + name + " container");
-            Container container = driver.launchSideContainer(listener, image, context.getRemotingContainer(), sidecar.getHints());
+            Container container = driver.launchSideContainer(listener, image, context.getRemotingContainer(), sidecar.getHints(), name, network);
             context.getSideContainers().put(name, container);
         }
     }
@@ -154,6 +158,10 @@ public class DefaultDockerProvisioner extends DockerProvisioner {
 
         if (context.getScmContainer() != null) {
             driver.removeContainer(listener, context.getScmContainer());
+        }
+
+        if(context.getNetwork() != null) {
+            driver.removeNetwork(listener, context.getNetwork());
         }
 
         driver.close();

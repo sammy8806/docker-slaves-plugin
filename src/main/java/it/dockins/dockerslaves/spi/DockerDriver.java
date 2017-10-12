@@ -29,7 +29,7 @@ public abstract class DockerDriver implements Closeable {
 
     public abstract Container launchBuildContainer(TaskListener listener, String image, Container remotingContainer, List<Hint> hints) throws IOException, InterruptedException;
 
-    public abstract Container launchSideContainer(TaskListener listener, String image, Container remotingContainer, List<Hint> hints) throws IOException, InterruptedException;
+    public abstract Container launchSideContainer(TaskListener listener, String image, Container remotingContainer, List<Hint> hints, String name, String network) throws IOException, InterruptedException;
 
     public abstract Proc execInContainer(TaskListener listener, String containerId, Launcher.ProcStarter starter) throws IOException, InterruptedException;
 
@@ -40,6 +40,12 @@ public abstract class DockerDriver implements Closeable {
     public abstract boolean checkImageExists(TaskListener listener, String image) throws IOException, InterruptedException;
 
     public abstract void buildDockerfile(TaskListener listener, String dockerfilePath, String tag, boolean pull) throws IOException, InterruptedException;
+
+    public abstract String createNetwork(TaskListener listener, String name) throws IOException, InterruptedException;
+
+    public abstract boolean hasNetwork(TaskListener listener, String name) throws IOException, InterruptedException;
+
+    public abstract void removeNetwork(TaskListener listener, String network) throws IOException, InterruptedException;
 
     /**
      * Return server version string, used actually to check connectivity with backend
